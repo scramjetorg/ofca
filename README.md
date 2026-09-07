@@ -31,7 +31,7 @@ zero runtime dependencies. It provides:
 - `DROP` for intentionally omitting an output.
 
 ```js
-import { DROP, compose, ofca, ofcaSync } from "ofca";
+import { DROP, compose, ofca, ofcaSync } from "@scramjet/ofca";
 
 const doubleThenAdd = compose((value) => value * 2, (value) => value + 1);
 console.log(ofcaSync([1, 2], doubleThenAdd)); // [3, 5]

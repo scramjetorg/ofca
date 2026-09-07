@@ -28,6 +28,7 @@ test("dist manifest propagates allowlisted metadata from the development manifes
     // The MIT license field matches the shipped LICENSE file.
     assert.equal(dist.license, "MIT");
     assert.match(readDist("LICENSE"), /^MIT License/);
+    assert.deepEqual(dist.publishConfig, { access: "public" });
 
     assert.ok(dist.files.includes("scramjet_sheep_vector.svg"));
     assert.match(readDist("scramjet_sheep_vector.svg"), /<svg\b/);

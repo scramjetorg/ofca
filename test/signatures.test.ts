@@ -5,7 +5,7 @@ import {
   ofca,
   ofcaSync,
   type CallbackMapper,
-} from "ofca";
+} from "@scramjet/ofca";
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends

@@ -1,6 +1,6 @@
 {
-  "name": "ofca",
-  "version": "0.0.0",
+  "name": "@scramjet/ofca",
+  "version": "0.1.0",
   "private": true,
   "description": "Ordered flow with callback-first concurrent arrival",
   "type": "module",
@@ -22,6 +22,9 @@
   "homepage": "https://github.com/scramjetorg/ofca#readme",
   "bugs": {
     "url": "https://github.com/scramjetorg/ofca/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22.0.0"
