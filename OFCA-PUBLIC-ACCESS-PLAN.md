@@ -1,96 +1,59 @@
-# OFCA Public Access Readiness Plan
+# OFCA release plan
 
-## Current position
+## Target
 
-OFCA is **not ready for public repository/npm release** and must remain private
-until every blocker in this plan is completed and independently verified.
+Publish `@scramjet/ofca@0.1.0` as an experimental public npm package. The GitHub
+repository may remain private; npm package visibility is independent.
 
-## Verified current facts
+## Already in place
 
-- Package development manifest is currently private.
-- `dist/` packaging is sanitized/allowlisted and verified; no secrets or credentials
-  were found in source, scripts, or tests.
-- OFCA has no `.github` workflows, `SECURITY.md`, `CONTRIBUTING.md`, changelog,
-  tags, release automation/configuration, or public-release provenance controls.
-- `LICENSE` currently says `Copyright (c) 2026 Signicode`, while package metadata
-  and repository references point to `Scramjet/scramjetorg`; the only commit author
-  email in the repository is `cz@signicode.com`.
-- The project version is `0.0.0`, explicitly labelled **Phase 0**, and the API is
-  not frozen.
-- Root `AGENTS.md` documents four submodules and stale gitlinks/uncommitted labels,
-  while `.gitmodules` / workspace files include OFCA and root gitlinks were moved.
+- The publishable `dist/` artifact is allowlisted and checked by tests plus
+  `npm run verify`.
+- CI on `main` runs a clean install, lint, typecheck, tests, and package verification.
+- GitHub Actions defaults to read-only permissions.
+- The `production` GitHub environment is restricted to `main`.
+- `.github/workflows/release.yml` is manual-only, requires explicit confirmation,
+  verifies the artifact, requests an OIDC token, and rejects npm token variables.
 
-## Required blocker gates (in order)
+## First publish
 
-### 1) Rights and publishing authorization
+npm cannot configure a trusted publisher until a package already exists. Bootstrap the
+first version once, then move immediately to OIDC.
 
-- [ ] Obtain a written authorization/assignment covering:
-  - copyright holder confirmation,
-  - Scramjet publication authority,
-  - branding/trademark permission, including permitted use of project naming,
-  - intended public author-email exposure policy,
-  - npm `ofca` package name ownership and namespace control.
+1. Confirm the publisher can publish to the `@scramjet` npm scope and that
+   `@scramjet/ofca` is available.
+2. Confirm the exact `main` commit is green in CI and run:
 
-### 2) Rights alignment and legal/brand consistency
+   ```sh
+   npm ci
+   npm run verify
+   ```
 
-- [ ] Align `LICENSE`, package metadata, and repository branding with the authority
-  confirmed in Gate 1.
-- [ ] Remove or document/resolve mixed ownership signals so public-facing legal text
-  and publisher identity are consistent.
+3. From a controlled terminal, publish the verified artifact with 2FA and a short-lived
+   granular npm token:
 
-### 3) Release model and API maturity decision
+   ```sh
+   npm publish ./dist --access public
+   ```
 
-- [ ] Decide public API maturity/versioning policy and support windows.
-- [ ] Decide whether repository visibility control (public/private) is independent of
-  npm publishability.
-- [ ] Publish decision memo that explicitly maps `0.0.0` / Phase 0 status to release
-  restrictions and user expectations.
+4. Verify the registry package with `npm view @scramjet/ofca@0.1.0` and a fresh install
+   in a temporary consumer project.
+5. Revoke the bootstrap token.
 
-### 4) Governance documents and coordination metadata
+## Trusted publishing for later releases
 
-- [ ] Add `SECURITY.md` with monitored contact and disclosure handling.
-- [ ] Add `CONTRIBUTING.md` with expected contribution workflow.
-- [ ] Add changelog/release notes area and governance process for updates.
-- [ ] Repair root coordinator documents to reflect current OFCA ownership and active
-  workflow status.
+After `0.1.0` exists, configure npm Trusted Publishing for:
 
-### 5) CI/CD quality and integrity controls
+- GitHub repository: `scramjetorg/ofca`
+- workflow: `release.yml`
+- environment: `production`
 
-- [ ] Add CI for clean install.
-- [ ] Add build/test/typecheck/lint/publish-verification steps.
-- [ ] Add package verification (`npm pack --dry-run`) and artifact checks.
-- [ ] Add dependency/security scanning in CI.
+Subsequent releases use the manual GitHub Actions release workflow and OIDC; they do
+not use a stored npm token.
 
-### 6) Infrastructure controls for release safety
+## GitHub limitation
 
-- [ ] Configure branch/tag protections before any public visibility change.
-- [ ] Configure least-privilege npm trusted publishing/provenance if publishing.
-- [ ] Enforce policy that no durable npm tokens are stored in tracked files or any
-  untrusted workflow context.
-
-### 7) Pre-visibility / pre-publish sign-off
-
-- [ ] Confirm organization and repository permissions and maintainer responsibilities.
-- [ ] Review full author/git history and metadata consistency.
-- [ ] Verify npm ownership, registry availability, and package namespace conflicts.
-- [ ] Run clean-environment publish verification (dry run only unless authorized).
-- [ ] Complete release/version/tag review against approved policy.
-
-## Decision record
-
-| Gate | Role owner | Required objective evidence |
-| --- | --- | --- |
-| 1. Rights and authorization | **Legal / rights owner** | Signed authorization artifacts naming copyright holder, publication authority, trademark permission, email policy, and npm namespace ownership. |
-| 2. Alignment of legal metadata | **Maintainer / release owner** + **Legal / rights owner** | Updated/approved `LICENSE` and package metadata references; diff report proving no unresolved ownership mismatch remains. |
-| 3. API maturity decision | **Maintainer / release owner** | Versioning policy document, API freeze statement, and visibility vs publish decision with acceptance criteria. |
-| 4. Governance docs | **Maintainer / release owner** | Committed governance docs plus evidence of coordinator document correction and review timestamps. |
-| 5. CI/CD controls | **Organization engineer / release owner** | CI workflow configuration and successful run logs for install/build/tests/typecheck/lint/pack/sast/security checks. |
-| 6. Publication protections | **Organization administrator** + **Maintainer / release owner** | Branch/tag protection policy exports and npm trusted-publishing/provenance configuration review (no token material in repository). |
-| 7. Pre-sign-off | **Organization administrator** + **Legal / rights owner** + **Maintainer / release owner** | Final checklists signed for permissions, history/metadata review, npm ownership availability, clean-environment verification, and version/tag approval. |
-
-## Go / No-go criterion
-
-**Go only if all gates above are complete and evidence-approved by all three roles.**
-
-If any gate is incomplete or evidence is missing, the result is **No-go** and OFCA
-must remain private.
+The current GitHub plan does not support branch protection or rulesets for this private
+repository. CI, the `main`-only production environment, and deliberate manual release
+dispatch are the current controls. Enable required CI branch protection if the plan or
+repository visibility changes.
