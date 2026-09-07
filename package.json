@@ -41,6 +41,7 @@
     "build": "npm run clean && npm run build:ts && npm run build:pkg",
     "typecheck": "npm run build && tsc --noEmit --project tsconfig.test.json",
     "check": "biome check .",
+    "benchmark": "npm run build && node benchmark/ofca-vs-array-transform.js",
     "test": "npm run build && node --test test/*.test.js",
     "test:bun": "npm run build && bun test test/*.test.js",
     "coverage": "npm run build && c8 --reporter=text --reporter=lcov --reports-dir=coverage --include=\"dist/**/*.js\" node --test test/*.test.js",

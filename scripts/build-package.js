@@ -41,10 +41,10 @@ const METADATA_ALLOWLIST = [
 ];
 
 /** Files that make up the shipped package, used for the tight `files` allowlist. */
-const PACKAGE_FILES = ["index.js", "index.d.ts", "README.md", "LICENSE"];
+const PACKAGE_FILES = ["index.js", "index.d.ts", "README.md", "LICENSE", "scramjet_sheep_vector.svg"];
 
 /** Human-readable documents shipped alongside the compiled artifacts. */
-const DOCUMENTS = ["README.md", "LICENSE"];
+const DOCUMENTS = ["README.md", "LICENSE", "scramjet_sheep_vector.svg"];
 
 function readRootManifest() {
   return JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));

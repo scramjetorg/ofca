@@ -17,7 +17,14 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = join(packageRoot, "dist");
 
 /** The complete, intended set of shipped files (relative to the dist package root). */
-export const EXPECTED_FILES = ["index.js", "index.d.ts", "README.md", "LICENSE", "package.json"];
+export const EXPECTED_FILES = [
+  "index.js",
+  "index.d.ts",
+  "README.md",
+  "LICENSE",
+  "scramjet_sheep_vector.svg",
+  "package.json",
+];
 
 /** Development-only manifest fields that must never reach the published package. */
 export const FORBIDDEN_FIELDS = [
@@ -100,7 +107,7 @@ export function verifyPackage() {
 
   // 4. The `files` allowlist must name only the shipped artifacts and docs.
   const declared = Array.isArray(manifest.files) ? manifest.files : [];
-  const expectedFiles = ["index.js", "index.d.ts", "README.md", "LICENSE"];
+  const expectedFiles = ["index.js", "index.d.ts", "README.md", "LICENSE", "scramjet_sheep_vector.svg"];
   if (JSON.stringify([...declared].sort()) !== JSON.stringify([...expectedFiles].sort())) {
     problems.push(`files allowlist must be ${JSON.stringify(expectedFiles)}, got ${JSON.stringify(declared)}`);
   }
