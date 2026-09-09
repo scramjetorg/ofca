@@ -308,15 +308,17 @@ function iteratorFrom<Input>(
 /**
  * Process any standard iterable, async iterable, or Node Readable (through its
  * standard async iterator) with bounded callback-first dispatch and ordered output.
- * Each leased slot includes either an active task or a reorder-buffer entry.
+ * The reorder buffer is deliberately not part of admission capacity: completed
+ * values may accumulate while an earlier task is still running.
  */
-export async function* ofca<Input, Output>(
-  source: Iterable<Input> | AsyncIterable<Input>,
+async function* ofcaKernel<Input, Output>(
+  source: Iterator<Input> | AsyncIterator<Input>,
   mapper: (value: Input, index: number) => Output | PromiseLike<Output> | typeof DROP,
   options: { concurrency?: number } = {},
+  cancellation: { cancelled: boolean; wake?: () => void; close?: () => Promise<unknown> },
 ): AsyncIterable<Exclude<Output, typeof DROP> | undefined> {
   const concurrency = concurrencyOf(options.concurrency);
-  const iterator = iteratorFrom<Input>(source);
+  const iterator = source;
   const invoke = callbackify<Input, Output | typeof DROP>(mapper);
   const completed = new Map<number, Output | typeof DROP | undefined>();
   let active = 0;
@@ -326,8 +328,11 @@ export async function* ofca<Input, Output>(
   let fatalError: unknown;
   let notification = false;
   let wake: (() => void) | undefined;
+  let pendingNext: Promise<void> | undefined;
+  const isCancelled = (): boolean => cancellation.cancelled;
 
   const notify = (): void => {
+    if (isCancelled()) return;
     if (wake) {
       const resolve = wake;
       wake = undefined;
@@ -344,10 +349,12 @@ export async function* ofca<Input, Output>(
     }
     return new Promise<void>((resolve) => {
       wake = () => resolve();
+      cancellation.wake = wake;
     });
   };
 
   const dispatch = (value: Input, index: number): void => {
+    if (isCancelled()) return;
     active += 1;
     invoke(value, index, (error, result) => {
       active -= 1;
@@ -357,20 +364,28 @@ export async function* ofca<Input, Output>(
     });
   };
 
-  const fill = async (): Promise<void> => {
-    while (!sourceDone && typeof fatalError === "undefined" && active + completed.size < concurrency) {
-      const next = await iterator.next();
-      if (next.done) {
-        sourceDone = true;
-        return;
-      }
-      dispatch(next.value, dispatched++);
-    }
+  const fill = (): void => {
+    if (isCancelled() || sourceDone || pendingNext || typeof fatalError !== "undefined" ||
+      active >= concurrency || completed.size >= concurrency) return;
+    pendingNext = Promise.resolve()
+      .then(() => iterator.next())
+      .then((next) => {
+        pendingNext = undefined;
+        if (isCancelled()) return;
+        if (next.done) sourceDone = true;
+        else dispatch(next.value, dispatched++);
+        notify();
+      }, (error) => {
+        pendingNext = undefined;
+        if (isCancelled()) return;
+        fatalError = error;
+        notify();
+      });
   };
 
   try {
-    await fill();
-    while (active > 0 || completed.size > 0 || !sourceDone) {
+    fill();
+    while (!isCancelled() && (active > 0 || completed.size > 0 || !sourceDone || pendingNext)) {
       if (typeof fatalError !== "undefined") throw fatalError;
 
       while (completed.has(nextOutput)) {
@@ -380,15 +395,64 @@ export async function* ofca<Input, Output>(
         if (value !== DROP) yield value as Exclude<Output, typeof DROP> | undefined;
       }
 
-      await fill();
+      fill();
       if (typeof fatalError !== "undefined") throw fatalError;
-      if (active === 0 && sourceDone) break;
+      if (active === 0 && completed.size === 0 && sourceDone && !pendingNext) break;
       if (!completed.has(nextOutput)) await waitForCompletion();
     }
   } finally {
-    const close = iterator.return;
-    if (typeof close === "function") {
-      await (close as () => unknown).call(iterator);
+    cancellation.cancelled = true;
+    cancellation.wake?.();
+    cancellation.wake = undefined;
+    completed.clear();
+    notification = false;
+    if (cancellation.close) {
+      const closing = cancellation.close();
+      if (pendingNext) void closing.catch(() => undefined);
+      else await closing;
     }
   }
+}
+
+// export async function* ofca(
+export function ofca<Input, Output>(
+  source: Iterable<Input> | AsyncIterable<Input>,
+  mapper: (value: Input, index: number) => Output | PromiseLike<Output> | typeof DROP,
+  options: { concurrency?: number } = {},
+): AsyncIterableIterator<Exclude<Output, typeof DROP> | undefined> {
+  const iterator = iteratorFrom(source);
+  let closePromise: Promise<unknown> | undefined;
+  const closeSource = (): Promise<unknown> => {
+    if (!closePromise) {
+      const close = iterator.return;
+      if (typeof close !== "function") {
+        closePromise = Promise.resolve();
+      } else {
+        try {
+          closePromise = Promise.resolve((close as () => unknown).call(iterator));
+        } catch (error) {
+          closePromise = Promise.reject(error);
+        }
+      }
+    }
+    return closePromise;
+  };
+  const cancellation: {cancelled: boolean; wake?: () => void; close?: () => Promise<unknown>} = {
+    cancelled: false,
+    close: closeSource,
+  };
+  const kernel = ofcaKernel(iterator, mapper, options, cancellation)[Symbol.asyncIterator]();
+  return {
+    next: value => kernel.next(value),
+    return: value => {
+      cancellation.cancelled = true;
+      cancellation.wake?.();
+      cancellation.wake = undefined;
+      void closeSource().catch(() => undefined);
+      void Promise.resolve(kernel.return?.(value)).catch(() => undefined);
+      return Promise.resolve({done: true, value: value as Exclude<Output, typeof DROP> | undefined});
+    },
+    throw: error => kernel.throw ? kernel.throw(error) : Promise.reject(error),
+    [Symbol.asyncIterator]() { return this; },
+  };
 }
