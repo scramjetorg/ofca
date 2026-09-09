@@ -78,3 +78,95 @@ test("ofca closes a source iterator when the consumer exits early", async () => 
     await iterator.return();
     assert.equal(closed, true);
 });
+
+test("ofca emits a live result without waiting for the next source item", async () => {
+    let release;
+    const source = (async function* () {
+        yield 1;
+        await new Promise(resolve => { release = resolve; });
+        yield 2;
+    })();
+    const iterator = ofca(source, value => value, {concurrency: 2})[Symbol.asyncIterator]();
+    const first = await Promise.race([
+        iterator.next(),
+        delay(100).then(() => { throw new Error("first output was gated by the live source"); }),
+    ]);
+    assert.deepEqual(first, {done: false, value: 1});
+    const second = iterator.next();
+    await delay(1);
+    release();
+    assert.deepEqual(await second, {done: false, value: 2});
+    assert.deepEqual(await iterator.next(), {done: true, value: undefined});
+});
+
+test("ofca refills a rolling window while an earlier item is delayed", async () => {
+    let release;
+    const started = [];
+    const output = collect(ofca([0, 1, 2], async value => {
+        started.push(value);
+        if (value === 0) await new Promise(resolve => { release = resolve; });
+        return value;
+    }, {concurrency: 2}));
+
+    await delay(10);
+    assert.deepEqual(started, [0, 1, 2]);
+    release();
+    assert.deepEqual(await output, [0, 1, 2]);
+});
+
+test("ofca keeps a stalled first source read bounded", async () => {
+    let calls = 0;
+    let release;
+    const source = {
+        [Symbol.asyncIterator]() { return this; },
+        next() {
+            calls++;
+            if (calls === 1) return new Promise(resolve => { release = () => resolve({done: false, value: 1}); });
+            return Promise.resolve({done: true, value: undefined});
+        }
+    };
+    const iterator = ofca(source, value => value, {concurrency: 2})[Symbol.asyncIterator]();
+    const first = iterator.next();
+    await delay(10);
+    assert.equal(calls, 1);
+    release();
+    assert.deepEqual(await first, {done: false, value: 1});
+    assert.deepEqual(await iterator.next(), {done: true, value: undefined});
+});
+
+test("ofca cancellation closes a blocked input without dispatching late values", async () => {
+    let calls = 0;
+    let releaseFirst;
+    let returnCalls = 0;
+    const mapped = [];
+    const source = {
+        [Symbol.asyncIterator]() { return this; },
+        next() {
+            calls++;
+            if (calls === 1) return Promise.resolve({done: false, value: 1});
+            return new Promise(resolve => { releaseFirst = () => resolve({done: false, value: 2}); });
+        },
+        return() {
+            returnCalls++;
+            return Promise.resolve({done: true, value: undefined});
+        }
+    };
+    const iterator = ofca(source, async value => {
+        mapped.push(value);
+        return value;
+    }, {concurrency: 1})[Symbol.asyncIterator]();
+
+    assert.deepEqual(await iterator.next(), {done: false, value: 1});
+    const pending = iterator.next();
+    await delay(1);
+    const returned = await Promise.race([
+        iterator.return(),
+        delay(100).then(() => { throw new Error("consumer cancellation stalled"); })
+    ]);
+    assert.deepEqual(returned, {done: true, value: undefined});
+    assert.deepEqual(await pending, {done: true, value: undefined});
+    assert.equal(returnCalls, 1);
+    releaseFirst();
+    await delay(1);
+    assert.deepEqual(mapped, [1]);
+});
